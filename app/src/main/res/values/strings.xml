@@ -28,5 +28,7 @@
     <string name="title_activity_contents_grid">Contents</string>
     <string name="title_activity_still_content">Still</string>
     <string name="title_activity_movie_content">Movie</string>
+    <string name="shutter_speed">Shutter Speed:</string>
+    <string name="check_status">Check Status</string>
 
 </resources>

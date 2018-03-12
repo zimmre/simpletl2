@@ -7,8 +7,6 @@ package o.zimmre.simpletl2;
 import android.app.Activity;
 import android.os.Bundle;
 import android.util.Log;
-import android.view.View;
-import android.view.Window;
 import android.widget.Button;
 import android.widget.TextView;
 
@@ -18,7 +16,6 @@ import org.json.JSONObject;
 
 import java.io.IOException;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 import o.zimmre.simpletl2.utils.DisplayHelper;
@@ -38,151 +35,70 @@ public class SampleCameraActivity extends Activity {
 
     private SimpleRemoteApi mRemoteApi;
 
-    private SimpleCameraEventObserver mEventObserver;
-
-    private SimpleCameraEventObserver.ChangeListener mEventListener;
-
-    private final Set<String> mAvailableCameraApiSet = new HashSet<>();
-
-    private final Set<String> mSupportedApiSet = new HashSet<>();
+    private CameraControl cameraControl;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        requestWindowFeature(Window.FEATURE_INDETERMINATE_PROGRESS);
         setContentView(R.layout.activity_sample_camera);
 
         SampleApplication app = (SampleApplication) getApplication();
         mTargetServer = app.getTargetServerDevice();
         mRemoteApi = new SimpleRemoteApi(mTargetServer);
         app.setRemoteApi(mRemoteApi);
-        mEventObserver = new SimpleCameraEventObserver(getApplicationContext(), mRemoteApi);
-        app.setCameraEventObserver(mEventObserver);
         mButtonTakePicture = findViewById(R.id.button_take_picture);
         mTextCameraStatus = findViewById(R.id.text_camera_status);
 
-        mEventListener = new SimpleCameraEventObserver.ChangeListenerTmpl() {
+        cameraControl = new CameraControl(mRemoteApi, getApplicationContext());
 
-            @Override
-            public void onShootModeChanged(String shootMode) {
-                refreshUi();
-            }
 
-            @Override
-            public void onCameraStatusChanged(String status) {
-                refreshUi();
-            }
-
-            @Override
-            public void onStorageIdChanged(String storageId) {
-                refreshUi();
-            }
-
-            @Override
-            public void onApiListModified(List<String> apis) {
-                synchronized (mAvailableCameraApiSet) {
-                    mAvailableCameraApiSet.clear();
-                    mAvailableCameraApiSet.addAll(apis);
-                }
-            }
-        };
-
-        Log.d(TAG, "onCreate() completed.");
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        mButtonTakePicture.setOnClickListener(v -> takeAndFetchPicture());
+        findViewById(R.id.check_status).setOnClickListener(x -> checkStatus());
+        cameraControl.start();
 
-        mEventObserver.activate();
+    }
 
-        mButtonTakePicture.setOnClickListener(new View.OnClickListener() {
-
-            @Override
-            public void onClick(View v) {
-                takeAndFetchPicture();
-            }
-        });
-
-        prepareOpenConnection();
-
-        Log.d(TAG, "onResume() completed.");
+    private void checkStatus() {
+        cameraControl.checkStatus(
+                status -> runOnUiThread(
+                        () -> mTextCameraStatus.setText(status)
+                )
+        );
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        closeConnection();
-
-        Log.d(TAG, "onPause() completed.");
     }
 
     private void prepareOpenConnection() {
         Log.d(TAG, "prepareToOpenConection() exec");
-
-        setProgressBarIndeterminateVisibility(true);
 
         new Thread() {
 
             @Override
             public void run() {
                 try {
-                    // Get supported API list (Camera API)
-                    JSONObject replyJsonCamera = mRemoteApi.getCameraMethodTypes();
-                    loadSupportedApiList(replyJsonCamera);
-
-                    try {
-                        // Get supported API list (AvContent API)
-                        JSONObject replyJsonAvcontent = mRemoteApi.getAvcontentMethodTypes();
-                        loadSupportedApiList(replyJsonAvcontent);
-                    } catch (IOException e) {
-                        Log.d(TAG, "AvContent is not support.");
+                    // confirm current camera status
+                    String cameraStatus;
+                    JSONObject replyJson = mRemoteApi.getEvent(false);
+                    JSONArray resultsObj = replyJson.getJSONArray("result");
+                    JSONObject cameraStatusObj = resultsObj.getJSONObject(1);
+                    String type = cameraStatusObj.getString("type");
+                    if ("cameraStatus".equals(type)) {
+                        cameraStatus = cameraStatusObj.getString("cameraStatus");
+                    } else {
+                        throw new IOException();
                     }
 
-                    SampleApplication app = (SampleApplication) getApplication();
-                    app.setSupportedApiList(mSupportedApiSet);
-
-                    if (!isApiSupported("setCameraFunction")) {
-
-                        // this device does not support setCameraFunction.
-                        // No need to check camera status.
-
+                    if (isShootingStatus(cameraStatus)) {
+                        Log.d(TAG, "camera function is Remote Shooting.");
                         openConnection();
-
-                    } else {
-
-                        // this device supports setCameraFunction.
-                        // after confirmation of camera state, open connection.
-                        Log.d(TAG, "this device support set camera function");
-
-                        if (!isApiSupported("getEvent")) {
-                            Log.e(TAG, "this device is not support getEvent");
-                            openConnection();
-                            return;
-                        }
-
-                        // confirm current camera status
-                        String cameraStatus;
-                        JSONObject replyJson = mRemoteApi.getEvent(false);
-                        JSONArray resultsObj = replyJson.getJSONArray("result");
-                        JSONObject cameraStatusObj = resultsObj.getJSONObject(1);
-                        String type = cameraStatusObj.getString("type");
-                        if ("cameraStatus".equals(type)) {
-                            cameraStatus = cameraStatusObj.getString("cameraStatus");
-                        } else {
-                            throw new IOException();
-                        }
-
-                        if (isShootingStatus(cameraStatus)) {
-                            Log.d(TAG, "camera function is Remote Shooting.");
-                            openConnection();
-                        } else {
-                            // set Listener
-                            startOpenConnectionAfterChangeCameraState();
-
-                            // set Camera function to Remote Shooting
-                            replyJson = mRemoteApi.setCameraFunction("Remote Shooting");
-                        }
                     }
                 } catch (IOException e) {
                     Log.w(TAG, "prepareToStartContentsListMode: IOException: " + e.getMessage());
@@ -218,221 +134,30 @@ public class SampleCameraActivity extends Activity {
         return shootingStatus.contains(currentStatus);
     }
 
-    private void startOpenConnectionAfterChangeCameraState() {
-        Log.d(TAG, "startOpenConectiontAfterChangeCameraState() exec");
-
-        runOnUiThread(new Runnable() {
-
-            @Override
-            public void run() {
-                mEventObserver
-                        .setEventChangeListener(new SimpleCameraEventObserver.ChangeListenerTmpl() {
-
-                            @Override
-                            public void onCameraStatusChanged(String status) {
-                                Log.d(TAG, "onCameraStatusChanged:" + status);
-                                if ("IDLE".equals(status) || "NotReady".equals(status)) {
-                                    openConnection();
-                                }
-                                refreshUi();
-                            }
-
-                            @Override
-                            public void onShootModeChanged(String shootMode) {
-                                refreshUi();
-                            }
-
-                            @Override
-                            public void onStorageIdChanged(String storageId) {
-                                refreshUi();
-                            }
-                        });
-
-                mEventObserver.start();
-            }
-        });
-    }
-
     /**
      * Open connection to the camera device to start monitoring Camera events
      * and showing liveview.
      */
     private void openConnection() {
 
-        mEventObserver.setEventChangeListener(mEventListener);
         new Thread() {
 
             @Override
             public void run() {
-                Log.d(TAG, "openConnection(): exec.");
 
                 try {
-                    JSONObject replyJson;
 
-                    // getAvailableApiList
-                    replyJson = mRemoteApi.getAvailableApiList();
-                    loadAvailableCameraApiList(replyJson);
+                    mRemoteApi.startRecMode();
 
-                    // check version of the server device
-                    if (isCameraApiAvailable("getApplicationInfo")) {
-                        Log.d(TAG, "openConnection(): getApplicationInfo()");
-                        replyJson = mRemoteApi.getApplicationInfo();
-                        if (!isSupportedServerVersion(replyJson)) {
-                            DisplayHelper.toast(getApplicationContext(), //
-                                    R.string.msg_error_non_supported_device);
-                            SampleCameraActivity.this.finish();
-                            return;
-                        }
-                    } else {
-                        // never happens;
-                        return;
-                    }
 
-                    // startRecMode if necessary.
-                    if (isCameraApiAvailable("startRecMode")) {
-                        Log.d(TAG, "openConnection(): startRecMode()");
-                        replyJson = mRemoteApi.startRecMode();
-
-                        // Call again.
-                        replyJson = mRemoteApi.getAvailableApiList();
-                        loadAvailableCameraApiList(replyJson);
-                    }
-
-                    // getEvent start
-                    if (isCameraApiAvailable("getEvent")) {
-                        Log.d(TAG, "openConnection(): EventObserver.start()");
-                        mEventObserver.start();
-                    }
-
-                    Log.d(TAG, "openConnection(): completed.");
                 } catch (IOException e) {
                     Log.w(TAG, "openConnection : IOException: " + e.getMessage());
-                    DisplayHelper.setProgressIndicator(SampleCameraActivity.this, false);
                     DisplayHelper.toast(getApplicationContext(), R.string.msg_error_connection);
                 }
             }
         }.start();
 
     }
-
-    /**
-     * Stop monitoring Camera events and close liveview connection.
-     */
-    private void closeConnection() {
-        Log.d(TAG, "closeConnection(): exec.");
-
-        // getEvent stop
-        Log.d(TAG, "closeConnection(): EventObserver.release()");
-        mEventObserver.release();
-
-        Log.d(TAG, "closeConnection(): completed.");
-    }
-
-    /**
-     * Refresh UI appearance along with current "cameraStatus" and "shootMode".
-     */
-    private void refreshUi() {
-        String cameraStatus = mEventObserver.getCameraStatus();
-        String shootMode = mEventObserver.getShootMode();
-
-        // CameraStatus TextView
-        mTextCameraStatus.setText(cameraStatus);
-
-        // Take picture Button
-        mButtonTakePicture.setEnabled("still".equals(shootMode) && "IDLE".equals(cameraStatus));
-    }
-
-    /**
-     * Retrieve a list of APIs that are available at present.
-     *
-     * @param replyJson
-     */
-    private void loadAvailableCameraApiList(JSONObject replyJson) {
-        synchronized (mAvailableCameraApiSet) {
-            mAvailableCameraApiSet.clear();
-            try {
-                JSONArray resultArrayJson = replyJson.getJSONArray("result");
-                JSONArray apiListJson = resultArrayJson.getJSONArray(0);
-                for (int i = 0; i < apiListJson.length(); i++) {
-                    mAvailableCameraApiSet.add(apiListJson.getString(i));
-                }
-            } catch (JSONException e) {
-                Log.w(TAG, "loadAvailableCameraApiList: JSON format error.");
-            }
-        }
-    }
-
-    /**
-     * Retrieve a list of APIs that are supported by the target device.
-     *
-     * @param replyJson
-     */
-    private void loadSupportedApiList(JSONObject replyJson) {
-        synchronized (mSupportedApiSet) {
-            try {
-                JSONArray resultArrayJson = replyJson.getJSONArray("results");
-                for (int i = 0; i < resultArrayJson.length(); i++) {
-                    mSupportedApiSet.add(resultArrayJson.getJSONArray(i).getString(0));
-                }
-            } catch (JSONException e) {
-                Log.w(TAG, "loadSupportedApiList: JSON format error.");
-            }
-        }
-    }
-
-    /**
-     * Check if the specified API is available at present. This works correctly
-     * only for Camera API.
-     *
-     * @param apiName
-     * @return
-     */
-    private boolean isCameraApiAvailable(String apiName) {
-        boolean isAvailable;
-        synchronized (mAvailableCameraApiSet) {
-            isAvailable = mAvailableCameraApiSet.contains(apiName);
-        }
-        return isAvailable;
-    }
-
-    /**
-     * Check if the specified API is supported. This is for camera and avContent
-     * service API. The result of this method does not change dynamically.
-     *
-     * @param apiName
-     * @return
-     */
-    private boolean isApiSupported(String apiName) {
-        boolean isAvailable;
-        synchronized (mSupportedApiSet) {
-            isAvailable = mSupportedApiSet.contains(apiName);
-        }
-        return isAvailable;
-    }
-
-    /**
-     * Check if the version of the server is supported in this application.
-     *
-     * @param replyJson
-     * @return
-     */
-    private boolean isSupportedServerVersion(JSONObject replyJson) {
-        try {
-            JSONArray resultArrayJson = replyJson.getJSONArray("result");
-            String version = resultArrayJson.getString(1);
-            String[] separated = version.split("\\.");
-            int major = Integer.valueOf(separated[0]);
-            if (2 <= major) {
-                return true;
-            }
-        } catch (JSONException e) {
-            Log.w(TAG, "isSupportedServerVersion: JSON format error.");
-        } catch (NumberFormatException e) {
-            Log.w(TAG, "isSupportedServerVersion: Number format error.");
-        }
-        return false;
-    }
-
 
     /**
      * Take a picture and retrieve the image data.
@@ -444,25 +169,29 @@ public class SampleCameraActivity extends Activity {
             @Override
             public void run() {
                 try {
-                    JSONObject replyJson = mRemoteApi.actTakePicture();
-                    JSONArray resultsObj = replyJson.getJSONArray("result");
-                    JSONArray imageUrlsObj = resultsObj.getJSONArray(0);
-                    String postImageUrl = null;
-                    if (1 <= imageUrlsObj.length()) {
-                        postImageUrl = imageUrlsObj.getString(0);
-                    }
-                    if (postImageUrl == null) {
-                        Log.w(TAG, "takeAndFetchPicture: post image URL is null.");
-                        DisplayHelper.toast(getApplicationContext(), //
-                                R.string.msg_error_take_picture);
-                    }
 
-                } catch (IOException e) {
-                    Log.w(TAG, "IOException while closing slicer: " + e.getMessage());
-                    DisplayHelper.toast(getApplicationContext(), //
-                            R.string.msg_error_take_picture);
-                } catch (JSONException e) {
-                    Log.w(TAG, "JSONException while closing slicer");
+
+                    JSONObject replyJson = mRemoteApi.actTakePicture();
+//
+//                    alarmManager.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP,
+//                            SystemClock.elapsedRealtime() + 22000,
+//                            "bulbmode",
+//                            new AlarmManager.OnAlarmListener() {
+//                                @Override
+//                                public void onAlarm() {
+//                                    try {
+//                                        mRemoteApi.stopBulbShooting();
+//                                    } catch (IOException e) {
+//                                        e.printStackTrace();
+//                                    }
+//
+//                                }
+//                            },
+//                            null);
+
+
+                } catch (Exception e) {
+                    Log.w(TAG, "Exception while taking picture: " + e.getMessage());
                     DisplayHelper.toast(getApplicationContext(), //
                             R.string.msg_error_take_picture);
                 } finally {

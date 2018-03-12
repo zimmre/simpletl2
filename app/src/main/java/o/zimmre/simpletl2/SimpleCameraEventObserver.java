@@ -194,12 +194,18 @@ public class SimpleCameraEventObserver {
                 Log.d(TAG, "start() exec.");
                 // Call getEvent API continuously.
                 boolean firstCall = true;
-                MONITORLOOP: while (mWhileEventMonitoring) {
+                while (mWhileEventMonitoring) {
 
                     // At first, call as non-Long Polling.
                     boolean longPolling = !firstCall;
 
                     try {
+                        // Retry after 5 sec.
+                        try {
+                            Thread.sleep(5000);
+                        } catch (InterruptedException e) {
+                            // do nothing.
+                        }
                         // Call getEvent API.
                         JSONObject replyJson = mRemoteApi.getEvent(longPolling);
 
@@ -213,10 +219,10 @@ public class SimpleCameraEventObserver {
                             case 1: // "Any" error
                             case 12: // "No such method" error
                                 fireResponseErrorListener();
-                                break MONITORLOOP; // end monitoring.
+                                continue; // end monitoring.
                             case 2: // "Timeout" error
                                 // Re-call immediately.
-                                continue MONITORLOOP;
+                                continue;
                             case 40402: // "Already polling" error
                                 // Retry after 5 sec.
                                 try {
@@ -224,12 +230,12 @@ public class SimpleCameraEventObserver {
                                 } catch (InterruptedException e) {
                                     // do nothing.
                                 }
-                                continue MONITORLOOP;
+                                continue;
                             default:
                                 Log.w(TAG, "SimpleCameraEventObserver: Unexpected error: "
                                         + errorCode);
                                 fireResponseErrorListener();
-                                break MONITORLOOP; // end monitoring.
+                                break; // end monitoring.
                         }
 
                         List<String> availableApis = findAvailableApiList(replyJson);
@@ -245,14 +251,6 @@ public class SimpleCameraEventObserver {
                             fireCameraStatusChangeListener(cameraStatus);
                         }
 
-                        // LiveviewStatus
-                        Boolean liveviewStatus = findLiveviewStatus(replyJson);
-                        Log.d(TAG, "getEvent liveviewStatus: " + liveviewStatus);
-                        if (liveviewStatus != null && !liveviewStatus.equals(mLiveviewStatus)) {
-                            mLiveviewStatus = liveviewStatus;
-                            fireLiveviewStatusChangeListener(liveviewStatus);
-                        }
-
                         // ShootMode
                         String shootMode = findShootMode(replyJson);
                         Log.d(TAG, "getEvent shootMode: " + shootMode);
@@ -266,34 +264,13 @@ public class SimpleCameraEventObserver {
                             fireShootModeChangeListener(shootMode);
                         }
 
-                        // zoomPosition
-                        int zoomPosition = findZoomInformation(replyJson);
-                        Log.d(TAG, "getEvent zoomPosition: " + zoomPosition);
-                        if (zoomPosition != -1) {
-                            mZoomPosition = zoomPosition;
-                            fireZoomInformationChangeListener(0, 0, zoomPosition, 0);
-                        }
-
-                        // storageId
-                        String storageId = findStorageId(replyJson);
-                        Log.d(TAG, "getEvent storageId:" + storageId);
-                        if (storageId != null && !storageId.equals(mStorageId)) {
-                            mStorageId = storageId;
-                            fireStorageIdChangeListener(storageId);
-                        }
-
-                        // :
-                        // : add implementation for Event data as necessary.
-
                     } catch (IOException e) {
                         // Occurs when the server is not available now.
                         Log.d(TAG, "getEvent timeout by client trigger.");
                         fireResponseErrorListener();
-                        break MONITORLOOP;
                     } catch (JSONException e) {
                         Log.w(TAG, "getEvent: JSON format error. " + e.getMessage());
                         fireResponseErrorListener();
-                        break MONITORLOOP;
                     }
 
                     firstCall = false;

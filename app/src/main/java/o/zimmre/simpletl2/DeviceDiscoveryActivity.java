@@ -31,11 +31,13 @@ public class DeviceDiscoveryActivity extends Activity {
 
     private static final String TAG = DeviceDiscoveryActivity.class.getSimpleName();
 
-    private SimpleSsdpClient mSsdpClient;
-
     private DeviceListAdapter mListAdapter;
 
     private boolean mActivityActive;
+
+
+    public static final String MY_CAMERA_LOCATION = "http://192.168.122.1:64321/scalarwebapi_dd.xml";
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -44,7 +46,6 @@ public class DeviceDiscoveryActivity extends Activity {
         setContentView(R.layout.activity_device_discovery);
         setProgressBarIndeterminateVisibility(false);
 
-        mSsdpClient = new SimpleSsdpClient();
         mListAdapter = new DeviceListAdapter(this);
 
         Log.d(TAG, "onCreate() completed.");
@@ -71,10 +72,8 @@ public class DeviceDiscoveryActivity extends Activity {
             @Override
             public void onClick(View v) {
                 Button btn = (Button) v;
-                if (!mSsdpClient.isSearching()) {
-                    searchDevices();
-                    btn.setEnabled(false);
-                }
+                searchDevices();
+                btn.setEnabled(false);
             }
         });
 
@@ -85,9 +84,6 @@ public class DeviceDiscoveryActivity extends Activity {
     protected void onPause() {
         super.onPause();
         mActivityActive = false;
-        if (mSsdpClient != null && mSsdpClient.isSearching()) {
-            mSsdpClient.cancelSearching();
-        }
 
         Log.d(TAG, "onPause() completed.");
     }
@@ -98,61 +94,47 @@ public class DeviceDiscoveryActivity extends Activity {
     private void searchDevices() {
         mListAdapter.clearDevices();
         setProgressBarIndeterminateVisibility(true);
-        mSsdpClient.search(new SimpleSsdpClient.SearchResultHandler() {
 
+        new Thread(new Runnable() {
             @Override
-            public void onDeviceFound(final ServerDevice device) {
-                // Called by non-UI thread.
-                Log.d(TAG, ">> Search device found: " + device.getFriendlyName());
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        mListAdapter.addDevice(device);
-                    }
-                });
-            }
+            public void run() {
+                final ServerDevice device = fetchMyCamera();
+                runOnUiThread(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                if (device != null) {
+                                    mListAdapter.addDevice(device);
+                                }
+                                if (mActivityActive) {
+                                    Toast.makeText(DeviceDiscoveryActivity.this,
+                                            device != null ? R.string.msg_device_search_finish : R.string.msg_error_device_searching,
+                                            Toast.LENGTH_SHORT).show(); //
+                                }
 
-            @Override
-            public void onFinished() {
-                // Called by non-UI thread.
-                Log.d(TAG, ">> Search finished.");
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        setProgressBarIndeterminateVisibility(false);
-                        findViewById(R.id.button_search).setEnabled(true);
-                        if (mActivityActive) {
-                            Toast.makeText(DeviceDiscoveryActivity.this, //
-                                    R.string.msg_device_search_finish, //
-                                    Toast.LENGTH_SHORT).show(); //
+                                setProgressBarIndeterminateVisibility(false);
+                                findViewById(R.id.button_search).setEnabled(true);
+                            }
                         }
-                    }
-                });
-            }
+                );
 
-            @Override
-            public void onErrorFinished() {
-                // Called by non-UI thread.
-                Log.d(TAG, ">> Search Error finished.");
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        setProgressBarIndeterminateVisibility(false);
-                        findViewById(R.id.button_search).setEnabled(true);
-                        if (mActivityActive) {
-                            Toast.makeText(DeviceDiscoveryActivity.this, //
-                                    R.string.msg_error_device_searching, //
-                                    Toast.LENGTH_SHORT).show(); //
-                        }
-                    }
-                });
             }
-        });
+        }).start();
     }
+
+    private ServerDevice fetchMyCamera() {
+        try {
+            return ServerDevice.fetch(MY_CAMERA_LOCATION);
+        } catch (Exception e) {
+            Log.e(TAG, "fetch failed", e);
+        }
+        return null;
+    }
+
 
     /**
      * Launch a SampleCameraActivity.
-     * 
+     *
      * @param device
      */
     private void launchSampleActivity(ServerDevice device) {
@@ -177,7 +159,7 @@ public class DeviceDiscoveryActivity extends Activity {
         private final LayoutInflater mInflater;
 
         public DeviceListAdapter(Context context) {
-            mDeviceList = new ArrayList<ServerDevice>();
+            mDeviceList = new ArrayList<>();
             mInflater = LayoutInflater.from(context);
         }
 
@@ -224,8 +206,8 @@ public class DeviceDiscoveryActivity extends Activity {
             String htmlLabel =
                     String.format("%s ", device.getFriendlyName()) //
                             + String.format(//
-                                    "<br><small>Endpoint URL:  <font color=\"blue\">%s</font></small>", //
-                                    endpointUrl);
+                            "<br><small>Endpoint URL:  <font color=\"blue\">%s</font></small>", //
+                            endpointUrl);
             textView.setText(Html.fromHtml(htmlLabel));
 
             return textView;
