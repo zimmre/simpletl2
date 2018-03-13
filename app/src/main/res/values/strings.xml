@@ -30,5 +30,6 @@
     <string name="title_activity_movie_content">Movie</string>
     <string name="shutter_speed">Shutter Speed:</string>
     <string name="check_status">Check Status</string>
+    <string name="init_connection">Init connection</string>
 
 </resources>

@@ -1,6 +1,11 @@
 package o.zimmre.simpletl2;
 
+import android.app.AlarmManager;
+import android.app.PendingIntent;
 import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.SystemClock;
 import android.util.Log;
 
 import java.util.concurrent.ExecutorService;
@@ -14,29 +19,53 @@ public class CameraControl {
 
     private final RemoteApi remoteApi;
     private final Context context;
+    private final AlarmManager alarmManager;
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
 
-    public CameraControl(SimpleRemoteApi simpleRemoteApi, Context context) {
-        this.remoteApi = new RemoteApi(simpleRemoteApi);
+    public CameraControl(Context context, RemoteApi remoteApi) {
+        this.remoteApi = remoteApi;
         this.context = context;
+        alarmManager = context.getSystemService(AlarmManager.class);
+
     }
 
     public void start() {
-
-        executorService.submit(() -> {
-            try {
-                remoteApi.startRecMode();
-            } catch (Exception e) {
-                Log.w(TAG, "openConnection : IOException: " + e.getMessage());
-                DisplayHelper.toast(context, R.string.msg_error_connection);
-            }
-        });
-
+        executorService.submit(() -> withToast(remoteApi::startRecMode));
     }
 
     public void checkStatus(Consumer<String> consumer) {
-        executorService.submit(()-> {
-            consumer.accept(remoteApi.getStatus());
-        });
+        executorService.submit(() ->
+                withToast(() ->
+                        consumer.accept(remoteApi.getStatus())
+                )
+        );
     }
+
+    /**
+     * Shoots using camera set shutter speed
+     */
+    public void shoot() {
+        executorService.submit(() -> withToast(remoteApi::actTakePicture));
+    }
+
+    /**
+     * Shoots in bulb mode
+     *
+     * @param bulbDelay - bulb delay
+     */
+    public void shoot(Long bulbDelay) {
+        final Intent intent = new Intent(BulbService.START, Uri.parse("camera://shoot/bulb?" + String.valueOf(bulbDelay)), context, BulbService.class);
+        final PendingIntent pendingIntent = PendingIntent.getService(context, 0, intent, 0);
+        alarmManager.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime(), pendingIntent);
+    }
+
+    private void withToast(Runnable r) {
+        try {
+            r.run();
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Error when executing camera operation", e);
+            DisplayHelper.toast(context, e.getMessage());
+        }
+    }
+
 }

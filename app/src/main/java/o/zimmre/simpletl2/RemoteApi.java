@@ -5,6 +5,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.util.concurrent.Callable;
 
 public class RemoteApi {
 
@@ -18,30 +19,35 @@ public class RemoteApi {
 
     public String getStatus() {
         try {
-            String cameraStatus;
             JSONObject replyJson = simpleRemoteApi.getEvent(false);
             JSONObject cameraStatusObj = findInRespone(replyJson, "cameraStatus");
             return cameraStatusObj.getString("cameraStatus");
 
         } catch (IOException | JSONException e) {
-            e.printStackTrace();
         }
-        return null;
+        return "Unknown";
 
     }
 
     public void startRecMode() {
-        try {
+        withTryCatch(() -> {
             final JSONObject response = simpleRemoteApi.startRecMode();
-            final JSONArray error = response.getJSONArray("error");
-            if (error == null) {
-                return;
+            return checkError(response);
+        });
+    }
+
+    private Class<Void> checkError(JSONObject response) {
+        try {
+            if (response.has("error")) {
+                final JSONArray error = response.getJSONArray("error");
+                throw new RuntimeException(error.toString());
             }
-            throw new RuntimeException(error.toString());
-        } catch (IOException | JSONException e) {
+            return Void.TYPE;
+        } catch (Exception e) {
             throw new RuntimeException(e.getMessage());
         }
     }
+
     private JSONObject findInRespone(JSONObject response, String type) throws JSONException {
         JSONArray result = response.getJSONArray("result");
         for (int i = 0; i < result.length(); i++) {
@@ -51,5 +57,28 @@ public class RemoteApi {
             }
         }
         throw new RuntimeException(type + " not found in response " + response.toString());
+    }
+
+    public void actTakePicture() {
+        withTryCatch(() -> {
+            final JSONObject response = simpleRemoteApi.actTakePicture();
+            return checkError(response);
+        });
+    }
+
+    private static <V> V withTryCatch(Callable<V> r) {
+        try {
+            return r.call();
+        } catch (Exception e) {
+            throw new RuntimeException(e.getMessage());
+        }
+    }
+
+    public void startBulbShooting() {
+        withTryCatch(() -> checkError(simpleRemoteApi.startBulbShooting()));
+    }
+
+    public void stopBulbShooting() {
+        withTryCatch(() -> checkError(simpleRemoteApi.stopBulbShooting()));
     }
 }
