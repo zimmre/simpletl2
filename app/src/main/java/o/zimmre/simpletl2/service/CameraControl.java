@@ -14,27 +14,39 @@ import java.util.function.Consumer;
 import o.zimmre.simpletl2.RemoteApi;
 import o.zimmre.simpletl2.utils.DisplayHelper;
 
+// not thread safe
 public class CameraControl {
     private static final String TAG = CameraControl.class.getName();
 
     private final RemoteApi remoteApi;
     private final Context context;
     private final AlarmManager alarmManager;
-    private final ExecutorService executorService = Executors.newSingleThreadExecutor();
+
+    private ExecutorService executorService;
 
     public CameraControl(Context context, RemoteApi remoteApi) {
         this.remoteApi = remoteApi;
         this.context = context;
         alarmManager = context.getSystemService(AlarmManager.class);
-
     }
 
     public void start() {
-        executorService.submit(() -> DisplayHelper.withToast(remoteApi::startRecMode, context));
+        initCamera();
+    }
+
+    public void stop() {
+        if (executorService != null) {
+            executorService.shutdown();
+            executorService = null;
+        }
+    }
+
+    public void initCamera() {
+        submit(() -> DisplayHelper.withToast(remoteApi::startRecMode, context));
     }
 
     public void checkStatus(Consumer<String> consumer) {
-        executorService.submit(() ->
+        submit(() ->
                 DisplayHelper.withToast(() ->
                         consumer.accept(remoteApi.getStatus()), context
                 )
@@ -45,7 +57,7 @@ public class CameraControl {
      * Shoots using camera set shutter speed
      */
     public void shoot() {
-        executorService.submit(() -> DisplayHelper.withToast(remoteApi::actTakePicture, context));
+        submit(() -> DisplayHelper.withToast(remoteApi::actTakePicture, context));
     }
 
     /**
@@ -60,6 +72,13 @@ public class CameraControl {
                 BulbService.class);
         final PendingIntent pendingIntent = PendingIntent.getService(context, 0, intent, 0);
         alarmManager.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime(), pendingIntent);
+    }
+
+    private void submit(Runnable r) {
+        if (executorService == null) {
+            executorService = Executors.newSingleThreadExecutor();
+        }
+        executorService.submit(r);
     }
 
 }

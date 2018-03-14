@@ -26,12 +26,20 @@ public class SampleCameraActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+
         findViewById(R.id.button_take_picture).setOnClickListener(v -> cameraControl.shoot());
         findViewById(R.id.check_status).setOnClickListener(v -> checkStatus());
-        findViewById(R.id.init_connection).setOnClickListener(v -> cameraControl.start());
+        findViewById(R.id.init_connection).setOnClickListener(v -> cameraControl.initCamera());
         findViewById(R.id.button_bulb_take_picture).setOnClickListener(v -> shootBulb());
 
         cameraControl.start();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+
+        cameraControl.stop();
     }
 
     private void shootBulb() {
