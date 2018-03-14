@@ -2,9 +2,9 @@ package o.zimmre.simpletl2;
 
 import android.app.Activity;
 import android.os.Bundle;
-import android.util.Log;
-import android.view.View;
 import android.widget.TextView;
+
+import o.zimmre.simpletl2.service.CameraControl;
 
 public class SampleCameraActivity extends Activity {
 

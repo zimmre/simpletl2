@@ -1,4 +1,4 @@
-package o.zimmre.simpletl2;
+package o.zimmre.simpletl2.service;
 
 import android.app.AlarmManager;
 import android.app.PendingIntent;
@@ -14,6 +14,8 @@ import android.util.Log;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import o.zimmre.simpletl2.RemoteApi;
+import o.zimmre.simpletl2.SampleApplication;
 import o.zimmre.simpletl2.utils.DisplayHelper;
 
 public class BulbService extends Service {

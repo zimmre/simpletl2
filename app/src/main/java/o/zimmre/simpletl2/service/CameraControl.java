@@ -1,4 +1,4 @@
-package o.zimmre.simpletl2;
+package o.zimmre.simpletl2.service;
 
 import android.app.AlarmManager;
 import android.app.PendingIntent;
@@ -12,6 +12,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
+import o.zimmre.simpletl2.RemoteApi;
 import o.zimmre.simpletl2.utils.DisplayHelper;
 
 public class CameraControl {

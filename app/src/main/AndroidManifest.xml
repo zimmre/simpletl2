@@ -28,7 +28,7 @@
             android:screenOrientation="portrait" />
 
         <service
-            android:name=".BulbService"
+            android:name=".service.BulbService"
             android:exported="false" />
     </application>
 
