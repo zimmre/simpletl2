@@ -14,5 +14,6 @@
     <string name="shutter_speed">Shutter Speed:</string>
     <string name="check_status">Check Status</string>
     <string name="init_connection">Init connection</string>
+    <string name="bulb_shoot">Bulb shoot</string>
 
 </resources>
