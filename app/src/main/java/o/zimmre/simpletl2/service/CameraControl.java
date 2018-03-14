@@ -6,7 +6,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.SystemClock;
-import android.util.Log;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -31,13 +30,13 @@ public class CameraControl {
     }
 
     public void start() {
-        executorService.submit(() -> withToast(remoteApi::startRecMode));
+        executorService.submit(() -> DisplayHelper.withToast(remoteApi::startRecMode, context));
     }
 
     public void checkStatus(Consumer<String> consumer) {
         executorService.submit(() ->
-                withToast(() ->
-                        consumer.accept(remoteApi.getStatus())
+                DisplayHelper.withToast(() ->
+                        consumer.accept(remoteApi.getStatus()), context
                 )
         );
     }
@@ -46,7 +45,7 @@ public class CameraControl {
      * Shoots using camera set shutter speed
      */
     public void shoot() {
-        executorService.submit(() -> withToast(remoteApi::actTakePicture));
+        executorService.submit(() -> DisplayHelper.withToast(remoteApi::actTakePicture, context));
     }
 
     /**
@@ -55,18 +54,12 @@ public class CameraControl {
      * @param bulbDelay - bulb delay
      */
     public void shoot(Long bulbDelay) {
-        final Intent intent = new Intent(BulbService.START, Uri.parse("camera://shoot/bulb?" + String.valueOf(bulbDelay)), context, BulbService.class);
+        final Intent intent = new Intent(BulbService.Action.START.toString(),
+                Uri.parse("camera://shoot/bulb?" + String.valueOf(bulbDelay)),
+                context,
+                BulbService.class);
         final PendingIntent pendingIntent = PendingIntent.getService(context, 0, intent, 0);
         alarmManager.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime(), pendingIntent);
-    }
-
-    private void withToast(Runnable r) {
-        try {
-            r.run();
-        } catch (RuntimeException e) {
-            Log.w(TAG, "Error when executing camera operation", e);
-            DisplayHelper.toast(context, e.getMessage());
-        }
     }
 
 }

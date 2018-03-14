@@ -16,11 +16,59 @@ import java.util.concurrent.Executors;
 
 import o.zimmre.simpletl2.RemoteApi;
 import o.zimmre.simpletl2.SampleApplication;
-import o.zimmre.simpletl2.utils.DisplayHelper;
+
+import static o.zimmre.simpletl2.utils.DisplayHelper.withToast;
 
 public class BulbService extends Service {
-    public static final String START = "bulb";
-    public static final String STOP_AND_DESTROY = "stopAndDestroy";
+
+    // poor man state machine
+    enum State {
+        INIT {
+            @Override
+            State process(Action action, BulbService service, Intent intent) {
+                switch (action) {
+                    case START:
+                        service.startBulb();
+                        service.scheduleStop(intent.getData());
+                        return SHOOTING;
+                    case STOP:
+                    default:
+                        service.stopSelf();
+                        return DEAD;
+                }
+            }
+        },
+        SHOOTING {
+            @Override
+            State process(Action action, BulbService service, Intent intent) {
+                switch (action) {
+                    case STOP:
+                        service.stopBulb();
+                        service.stopSelf();
+                        return DEAD;
+                    case START:
+                    default:
+                        // do nothing
+                        return this;
+                }
+            }
+        },
+        DEAD {
+            @Override
+            State process(Action action, BulbService service, Intent intent) {
+                service.stopSelf();
+                return this;
+            }
+        };
+
+        abstract State process(Action action, BulbService service, Intent intent);
+    }
+
+    enum Action {
+        START,
+        STOP
+    }
+
     private static final String TAG = BulbService.class.getName();
 
     private Context context;
@@ -28,83 +76,52 @@ public class BulbService extends Service {
     private ExecutorService executorService;
     private AlarmManager alarmManager;
 
-    private boolean shooting = false;
+    private State state;
 
     @Override
     public void onCreate() {
-        Log.w(TAG, "Service created");
+        Log.w(TAG, "BulbService created");
         final SampleApplication application = (SampleApplication) getApplication();
         remoteApi = application.getRemoteApi();
         executorService = Executors.newSingleThreadExecutor();
         context = getApplicationContext();
         alarmManager = context.getSystemService(AlarmManager.class);
+        state = State.INIT;
     }
 
     @Override
     public void onDestroy() {
         Log.w(TAG, "Service destroyed");
-        executorService.shutdownNow();
+        executorService.shutdown();
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        final String action = intent.getAction();
-        Log.w(TAG, this.toString() + " recieved intent. action: " + action);
-        if (action == null) {
-            if (!shooting) {
-                stopSelf();
-            }
-            return START_STICKY;
-        }
-        switch (action) {
-            case START:
-                startBulb(intent.getData());
-                break;
-            case STOP_AND_DESTROY:
-                executorService.submit(() -> withToast(remoteApi::stopBulbShooting, true));
-                break;
-            default:
-                stopSelf();
-        }
-
+        state = state.process(Action.valueOf(intent.getAction()), this, intent);
         return START_STICKY;
     }
 
-    private void startBulb(Uri data) {
-        if (shooting) {
-            return;
-        }
-        try {
-            final String query = data.getQuery();
-            final Long delay = Long.valueOf(query) * 1000;
-            final Intent intent = new Intent(BulbService.STOP_AND_DESTROY, null, context, BulbService.class);
-            final PendingIntent pendingIntent = PendingIntent.getService(context, 0, intent, 0);
-            alarmManager.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + delay, pendingIntent);
-            executorService.submit(() -> withToast(remoteApi::startBulbShooting, false));
-            shooting = true;
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to start bulb shooting", e);
-            stopSelf();
-        }
+    private void stopBulb() {
+        executorService.submit(() -> withToast(remoteApi::stopBulbShooting, context));
+    }
+
+    private void startBulb() {
+        executorService.submit(() -> withToast(remoteApi::startBulbShooting, context));
+    }
+
+    private void scheduleStop(Uri data) {
+        final String query = data.getQuery();
+        final Long delay = Long.valueOf(query) * 1000;
+
+        final Intent intent = new Intent(Action.STOP.toString(), null, context, BulbService.class);
+        final PendingIntent pendingIntent = PendingIntent.getService(context, 0, intent, 0);
+        alarmManager.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + delay, pendingIntent);
     }
 
     @Nullable
     @Override
     public IBinder onBind(Intent intent) {
         return null;
-    }
-
-    private void withToast(Runnable r, boolean destroy) {
-        try {
-            r.run();
-        } catch (RuntimeException e) {
-            Log.w(TAG, "Error when executing camera operation", e);
-            DisplayHelper.toast(context, e.getMessage());
-        } finally {
-            if (destroy) {
-                stopSelf();
-            }
-        }
     }
 
 }
