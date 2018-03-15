@@ -30,6 +30,9 @@
         <service
             android:name=".service.BulbService"
             android:exported="false" />
+        <service
+            android:name=".service.TimelapseService"
+            android:exported="false" />
     </application>
 
 </manifest>

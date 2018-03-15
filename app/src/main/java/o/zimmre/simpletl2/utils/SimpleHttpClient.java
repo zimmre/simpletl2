@@ -26,7 +26,7 @@ public final class SimpleHttpClient {
 
     private static final int DEFAULT_CONNECTION_TIMEOUT = 10000; // [msec]
 
-    private static final int DEFAULT_READ_TIMEOUT = 10000; // [msec]
+    private static final int DEFAULT_READ_TIMEOUT = 35000; // [msec]
 
     private SimpleHttpClient() {
 

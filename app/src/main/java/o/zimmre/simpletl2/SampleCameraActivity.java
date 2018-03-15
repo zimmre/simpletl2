@@ -31,8 +31,18 @@ public class SampleCameraActivity extends Activity {
         findViewById(R.id.check_status).setOnClickListener(v -> checkStatus());
         findViewById(R.id.init_connection).setOnClickListener(v -> cameraControl.initCamera());
         findViewById(R.id.button_bulb_take_picture).setOnClickListener(v -> shootBulb());
+        findViewById(R.id.shoot_timelapse).setOnClickListener(v -> shootTimelapse());
 
         cameraControl.start();
+    }
+
+    private void shootTimelapse() {
+        TextView delay = findViewById(R.id.timelapse_delay);
+        TextView count = findViewById(R.id.pictures_count);
+        cameraControl.shootTimelapse(
+                Long.valueOf(delay.getText().toString()),
+                Long.valueOf(count.getText().toString())
+        );
     }
 
     @Override
