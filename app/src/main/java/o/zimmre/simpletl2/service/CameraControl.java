@@ -98,4 +98,13 @@ public class CameraControl {
         return this.executorService;
     }
 
+    public void stopTimelapse() {
+        final Intent intent = new Intent(TimelapseService.Action.STOP.toString(),
+                null,
+                context,
+                TimelapseService.class);
+        final PendingIntent pendingIntent = PendingIntent.getService(context, 0, intent, 0);
+        alarmManager.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime(), pendingIntent);
+    }
+
 }

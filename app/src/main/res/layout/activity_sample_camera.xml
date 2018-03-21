@@ -5,6 +5,7 @@
     android:orientation="vertical">
 
     <LinearLayout
+        android:keepScreenOn="true"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:gravity="top"
@@ -79,6 +80,22 @@
             android:textAppearance="?android:attr/textAppearanceSmall" />
 
         <Button
+            android:id="@+id/stop_timelapse"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:enabled="true"
+            android:text="@string/stop_timelapse"
+            android:textAppearance="?android:attr/textAppearanceSmall" />
+
+        <Button
+            android:id="@+id/timelapse_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:enabled="true"
+            android:text="@string/timelapse_status"
+            android:textAppearance="?android:attr/textAppearanceSmall" />
+
+        <Button
             android:id="@+id/check_status"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -93,6 +110,14 @@
             android:enabled="true"
             android:text="@string/init_connection"
             android:textAppearance="?android:attr/textAppearanceSmall" />
+
+        <TextView
+            android:id="@+id/text_timelapse_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textAppearance="?android:attr/textAppearanceSmall" />
+
 
     </LinearLayout>
 

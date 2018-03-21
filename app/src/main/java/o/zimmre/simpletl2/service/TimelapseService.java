@@ -7,8 +7,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.IBinder;
+import android.os.PowerManager;
 import android.os.SystemClock;
 import android.support.annotation.Nullable;
+import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
 import java.util.concurrent.ExecutorService;
@@ -24,12 +26,15 @@ public class TimelapseService extends Service {
 
     private static final String TAG = TimelapseService.class.getName();
 
+    public static final String STATUS = "o.zimmre.simpletl2.service.TimelapseService.STATUS";
+    private PowerManager.WakeLock wakeLock;
+
     // poor man state machine
     public enum Action {
         START,
         SCHEDULE,
         SHOOT,
-        STOP
+        STOP,
     }
 
     private enum State {
@@ -42,8 +47,7 @@ public class TimelapseService extends Service {
                         service.transit(Action.SCHEDULE);
                         return SCHEDULING;
                     default:
-                        service.transit(Action.STOP);
-                        return DEAD;
+                        return super.process(Action.STOP, service, intent);
                 }
             }
         },
@@ -52,14 +56,20 @@ public class TimelapseService extends Service {
             State process(Action action, TimelapseService service, Intent intent) {
                 switch (action) {
                     case SCHEDULE:
-                        if (service.counter.get() <= 0) {
+                        service.wakeLock.acquire(service.delay*2);
+                        if (service.counter.getAndDecrement() < 0) {
                             service.transit(Action.STOP);
                             return DEAD;
                         }
                         service.transit(Action.SHOOT);
+
+                        LocalBroadcastManager.getInstance(service)
+                                .sendBroadcast(
+                                        new Intent(STATUS)
+                                                .putExtra(STATUS, service.counter.get()));
                         return SHOOTING;
                     default:
-                        return this;
+                        return super.process(action, service, intent);
                 }
             }
         },
@@ -72,7 +82,7 @@ public class TimelapseService extends Service {
                         service.transit(Action.SCHEDULE, service.delay);
                         return SCHEDULING;
                     default:
-                        return this;
+                        return super.process(action, service, intent);
                 }
             }
         },
@@ -84,7 +94,13 @@ public class TimelapseService extends Service {
             }
         };
 
-        abstract State process(Action action, TimelapseService service, Intent intent);
+        State process(Action action, TimelapseService service, Intent intent) {
+            if (action == Action.STOP) {
+                service.transit(Action.STOP);
+                return DEAD;
+            }
+            return this;
+        }
     }
 
     private Context context;
@@ -98,13 +114,15 @@ public class TimelapseService extends Service {
 
     @Override
     public void onCreate() {
-        Log.w(TAG, "BulbService created");
+        Log.w(TAG, "TimelapseService created");
         final SampleApplication application = (SampleApplication) getApplication();
         remoteApi = application.getRemoteApi();
         executorService = Executors.newSingleThreadExecutor();
         context = getApplicationContext();
         alarmManager = context.getSystemService(AlarmManager.class);
         state = State.INIT;
+        PowerManager powerManager = context.getSystemService(PowerManager.class);
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, this.getClass().getName());
     }
 
     @Override
@@ -120,8 +138,10 @@ public class TimelapseService extends Service {
     }
 
     private void takePicture() {
-        counter.decrementAndGet();
-        executorService.submit(() -> withToast(remoteApi::actTakePicture, context));
+        executorService.submit(() -> withToast(() -> {
+            remoteApi.startRecMode();
+            remoteApi.actTakePicture();
+        }, context));
     }
 
     private void init(Uri data) {
@@ -129,14 +149,15 @@ public class TimelapseService extends Service {
         this.delay = Long.valueOf(data.getQueryParameter("delay")) * 1000;
     }
 
-    private void transit(Action schedule) {
-        transit(schedule, 0);
+    private void transit(Action action) {
+        transit(action, 0);
     }
 
     private void transit(Action schedule, long delay) {
         final Intent intent = new Intent(schedule.toString(), null, context, TimelapseService.class);
         final PendingIntent pendingIntent = PendingIntent.getService(context, 0, intent, 0);
-        alarmManager.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + delay, pendingIntent);
+        alarmManager.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                SystemClock.elapsedRealtime() + delay, pendingIntent);
     }
 
     @Nullable
